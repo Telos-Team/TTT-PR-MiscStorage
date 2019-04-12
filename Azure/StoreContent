@@ -1,0 +1,61 @@
+#r "Newtonsoft.Json"
+#r "Microsoft.WindowsAzure.Storage"
+
+using System.Net;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Primitives;
+using Microsoft.WindowsAzure.Storage;
+using Microsoft.WindowsAzure.Storage.Table;
+using Newtonsoft.Json;
+
+public static async Task<IActionResult> Run(
+    HttpRequest req, 
+    CloudTable outputTable,
+    //ICollector<ContentRecord> outputTable,
+    ILogger log)
+{
+    log.LogInformation("C# HTTP trigger function processed a request.");
+
+    string user;
+    string tenant;
+    string name;
+    string type = "text/html";
+    string content;
+    Guid guid = Guid.NewGuid();
+
+    string requestBody = await new StreamReader(req.Body).ReadToEndAsync();
+    dynamic data = JsonConvert.DeserializeObject(requestBody);
+    user = data?.user;
+    tenant = data?.tenant;
+    name = data?.name;
+    type = data?.type;
+    content = data?.content;
+
+    var contentRecord = new ContentRecord() {
+        PartitionKey = "HyperlinkContent",
+        RowKey = guid.ToString(),
+        User = user,
+        Tenant = tenant,
+        Name = name,
+        Type = type,
+        Content = content,
+        Created = DateTime.UtcNow};
+
+    TableOperation insertOperation = TableOperation.Insert(contentRecord); 
+    await outputTable.ExecuteAsync(insertOperation);
+
+    return content != null
+        //? (ActionResult)new OkObjectResult(new {id = $"Hello, {user}" })
+        ? (ActionResult)new OkObjectResult(new {id = guid.ToString() })
+        : new BadRequestObjectResult("Please pass a name in the request body");
+}
+
+public class ContentRecord : TableEntity
+{
+    public string User {get;set;}
+    public string Tenant {get;set;}
+    public string Name {get;set;}
+    public string Type {get;set;}
+    public string Content {get;set;}
+    public DateTime Created {get;set;}
+}
