@@ -1,0 +1,60 @@
+//#load "..\shared\ContentRecord.csx"
+#r "Newtonsoft.Json"
+#r "Microsoft.WindowsAzure.Storage"
+#r "Microsoft.Azure.WebJobs"
+
+using System.Net;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Primitives;
+using Microsoft.WindowsAzure.Storage;
+using Microsoft.WindowsAzure.Storage.Table;
+using Newtonsoft.Json;
+
+
+public static async Task<IActionResult> Run(
+    HttpRequest req, 
+    CloudTable inputTable, 
+    ILogger log)
+{
+    log.LogInformation("C# HTTP trigger function processed a request.");
+
+    string tenant = req.Query["tenant"];
+    string id = req.Query["id"];
+
+    string requestBody = await new StreamReader(req.Body).ReadToEndAsync();
+
+    string type = "text/html";
+    string content = "";
+
+    TableQuery<ContentRecord> rangeQuery = new TableQuery<ContentRecord>().Where(
+    TableQuery.CombineFilters(
+        TableQuery.GenerateFilterCondition("Tenant", QueryComparisons.Equal, 
+            tenant),
+        TableOperators.And,
+        TableQuery.GenerateFilterCondition("RowKey", QueryComparisons.Equal, 
+            id)));
+
+    // Execute the query and loop through the results
+    foreach (ContentRecord record in 
+    await inputTable.ExecuteQuerySegmentedAsync(rangeQuery, null))
+    {
+        log.LogInformation(
+            $"{record.PartitionKey}\t{record.RowKey}\t{record.Timestamp}");
+        type = record.Type ?? type;
+        content = record.Content;
+    }
+
+    return content != null
+        ? (ActionResult) new ContentResult { Content = content, ContentType = type }
+        : new BadRequestObjectResult("Please pass tenant and id on the query string");
+}
+
+public class ContentRecord : TableEntity
+{
+    public string User {get;set;}
+    public string Tenant {get;set;}
+    public string Name {get;set;}
+    public string Type {get;set;}
+    public string Content {get;set;}
+    public DateTime Created {get;set;}
+}
